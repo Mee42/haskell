@@ -1,5 +1,7 @@
 import Text.Read
 import Data.Maybe
+import System.IO
+
 
 data Player = X | O
   deriving (Eq,Show,Enum) -- hack till lucid teachs me how tf types work 
@@ -36,7 +38,7 @@ winRow (Board a) (x,y,z) = if (a !! x) == (a !! y) && (a !! x) == (a !! z) && ((
                         then Just $ getPlayer (a !! x)
                         else Nothing
 
-combine :: Maybe Player -> Maybe Player -> Maybe Player
+combine :: Maybe x -> Maybe x -> Maybe x
 combine (Just a) (Just b)= Just a
 combine (Just a) Nothing = Just a
 combine Nothing (Just b) = Just b
@@ -45,9 +47,15 @@ combine Nothing Nothing  = Nothing
 combineList :: [Maybe Player] -> Maybe Player
 combineList list = foldl combine Nothing list
 
-win :: Board -> Maybe Player
-win a = combineList $ map (winRow a) [(0,1,2),(3,4,5),(6,7,8),(0,3,6),(1,4,7),(2,5,8),(0,4,8),(2,4,6)]
-
+win :: Board -> Maybe GameWinner
+win a = do
+    let result = combineList $ map (winRow a) [(0,1,2),(3,4,5),(6,7,8),(0,3,6),(1,4,7),(2,5,8),(0,4,8),(2,4,6)]
+    if isNothing result && isTie a
+    then Just Tie
+    else fmap (\x -> GameWinner x) result
+ 
+isTie :: Board -> Bool
+isTie (Board xs) = all (\x -> x == Nothing) xs
 
 play :: Board -> Player -> Int -> Maybe Board
 play (Board a) player index = if index < 0 || index > 8 || (a !! index) /= Nothing then Nothing
@@ -60,46 +68,51 @@ playerMove :: Board -> Player -> IO Board
 playerMove board player = do
                             putStrLn $ toStringB board
                             putStrLn $ "Player " ++ show player ++ " turn"
-                            move <- getIntInput "Move (0..8): " (\x -> x `elem` [0..8])
+                            move <- getIntInput "Move (0..8): " (\x -> x `elem` [0..8]) helpHelp
                             let new = play board player move
                             putStrLn $ maybe "invalid move" toStringB new
                             if isJust new
                             then return $ fromJust new
                             else do
-                              putStrLn "no"
                               playerMove board player
+
+
+helpHelp = " 0 | 1 | 2" ++ line ++ " 3 | 4 | 5" ++ line ++ " 6 | 7 | 8"  
+
 -- if the user doesn't input an int, or the conditional returns false
 -- re-prompt 
-getIntInput :: String -> (Int -> Bool) -> IO Int
-getIntInput message conditional = do
+-- this string is the help, and will be printed when (?) is printed
+getIntInput :: String -> (Int -> Bool) -> String -> IO Int
+getIntInput message conditional help = do
         putStr message
+        hFlush stdout        
         move <- getLine
-        let maybeInt = ((readMaybe move) :: Maybe Int) -- todo: remove ()
-        if maybe False conditional maybeInt 
-        then do 
-            return $ fromJust maybeInt
+        if move == "?"
+        then do
+            putStrLn help
+            getIntInput message conditional help
         else do
-            value <- getIntInput message conditional 
-            return value 
+            let maybeInt = ((readMaybe move) :: Maybe Int) -- todo: remove ()
+            if maybe False conditional maybeInt 
+            then do 
+                return $ fromJust maybeInt
+            else getIntInput message conditional help 
+data GameWinner = Tie | GameWinner Player
 
-isTie :: Board -> Bool
-isTie a = False
-
-gameStep :: Board -> Player -> IO (Maybe Player)
+gameStep :: Board -> Player -> IO GameWinner
 gameStep board player = do
-  putStrLn $ player ++ "'s turn"
-  newBoard <- playerMove
+  putStrLn $ show player ++ "'s turn"
+  newBoard <- playerMove board player
   let isWin = win newBoard
   if isNothing isWin
-      then gameStep newBoard (next player)
-  else if isTie newBoard
-      then return Nothing
+       then gameStep newBoard (next player)
   else return $ fromJust isWin
  
--- main = playTurn emptyBoard X
-
-
-
+main = do
+    result <- gameStep emptyBoard X
+    case result of
+      (Tie) -> putStrLn $ "It was a tie!"
+      (GameWinner p) -> putStrLn $ "Player " ++ show p ++ " won!!"
 
 
 
