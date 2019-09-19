@@ -56,18 +56,14 @@ play (Board a) player index = if index < 0 || index > 8 || (a !! index) /= Nothi
 
 emptyBoard = Board [ Nothing | x <- [0..8]]
  
-playerMove :: Board -> Player -> IO Board
-playerMove board player = do
+playTurn :: Board -> Player -> IO ()
+playTurn board player = do
                             putStrLn $ toStringB board
                             putStrLn $ "Player " ++ show player ++ " turn"
                             move <- getIntInput "Move (0..8): " (\x -> x `elem` [0..8])
                             let new = play board player move
-                            putStrLn $ maybe "invalid move" toStringB new
-                            if isJust new
-                            then return $ fromJust new
-                            else do
-                              putStrLn "no"
-                              playerMove board player
+			    putStrLn $ maybe "invalid move" toStringB new
+
 -- if the user doesn't input an int, or the conditional returns false
 -- re-prompt 
 getIntInput :: String -> (Int -> Bool) -> IO Int
@@ -77,26 +73,13 @@ getIntInput message conditional = do
         let maybeInt = ((readMaybe move) :: Maybe Int) -- todo: remove ()
         if maybe False conditional maybeInt 
         then do 
-            return $ fromJust maybeInt
-        else do
-            value <- getIntInput message conditional 
-            return value 
-
-isTie :: Board -> Bool
-isTie a = False
-
-gameStep :: Board -> Player -> IO (Maybe Player)
-gameStep board player = do
-  putStrLn $ player ++ "'s turn"
-  newBoard <- playerMove
-  let isWin = win newBoard
-  if isNothing isWin
-      then gameStep newBoard (next player)
-  else if isTie newBoard
-      then return Nothing
-  else return $ fromJust isWin
+	    test <- getIntInput message conditional
+ 	    return test
+        else do 
+ 	    return fromJust maybeInt 
+	              
  
--- main = playTurn emptyBoard X
+main = playTurn emptyBoard X
 
 
 
