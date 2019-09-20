@@ -1,6 +1,7 @@
 import Text.Read
 import Data.Maybe
 import System.IO
+import Data.List
 
 
 data Player = X | O
@@ -15,6 +16,7 @@ instance Enum Player where
 
 
 newtype Square = Square (Maybe Player)
+    deriving (Eq)
 
 instance Show Square where
     show (Square a) = case a of
@@ -62,14 +64,21 @@ isTie :: Board -> Bool
 isTie (Board xs) = all (\x -> x == Square Nothing) xs
 
 play :: Board -> Player -> Int -> Maybe Board
-play (Board a) player index = if index < 0 || index > 8 || (a !! index) /= Nothing then Nothing
-                              else Just $ Board $ take index a ++ [Just player] ++ drop (index + 1) a
+play (Board a) player index = 
+  if index < 0 || index > 8 || (a !! index) /= Square Nothing
+      then Nothing
+  else Just $ Board $ take index a ++ [Square (Just player)] ++ drop (index + 1) a
 
 
 emptyBoard = Board [ Square Nothing | x <- [0..8]]
- 
-playerMove :: Board -> Player -> IO Board
-playerMove board player = do
+
+data AIMode = PvP | PvC
+    deriving Show
+
+
+playerMove :: Board -> Player -> AIMode -> IO Board
+playerMove board O PvC = return $ fromJust $ computerPlay board O
+playerMove board player mode = do
                             putStrLn $ show board
                             putStrLn $ "Player " ++ show player ++ " turn"
                             move <- getIntInput "Move (0..8): " (\x -> x `elem` [0..8]) helpHelp
@@ -78,7 +87,46 @@ playerMove board player = do
                             if isJust new
                             then return $ fromJust new
                             else do
-                              playerMove board player
+                              playerMove board player mode
+
+
+updateElement :: Board -> Int -> Player -> Board
+updateElement (Board a) index player = 
+  Board $ take index a ++ [Square (Just player)] ++ drop (index + 1) a
+computerPlay :: Board -> Player -> Maybe Board -- return the thing
+computerPlay ex player = 
+  maybe Nothing (\x -> Just (updateElement ex x player)) $ computerPlayX ex player
+
+getList :: Board -> [Square]
+getList (Board a) = a
+
+computerPlayX :: Board -> Player -> Maybe Int
+computerPlayX (Board ex) player = Nothing 
+  
+
+search :: Board -> Player -> [Fractional,Index]
+search board player = do
+  let list1 = zip (getList board) [x | x <- [0..8]]
+  let options = filter (\(x,i) -> x == Square Nothing) list1
+  let newBoards = map (\(x,i) -> ((updateElement board x player),i)) options 
+  let scores = map(\(boardX,i) -> ((do {
+    let win = win boardX;
+    if isJust && fromJust win == Tie;
+        then 0.1; -- tie
+    else if isJust && fromJust win == O;
+        then 0.01; -- we win
+    else if isJust && fromJust win == X;
+        then 1; -- player wins
+    else;
+        0.01 + $ search boardX (succ player) }),i)) newBoards
+  scores 
+   
+-- find all possible moves I can make, then add up,
+--  for all subsequent moves, how many end in losses.
+-- pick the result with the smallest number
+-- every turn adds 0.01, losing adds 1, winning adds 0. 
+-- This pushes it to finish quickly, if that is possible    
+
 
 
 helpHelp = " 0 | 1 | 2" ++ line ++ " 3 | 4 | 5" ++ line ++ " 6 | 7 | 8"  
@@ -101,19 +149,25 @@ getIntInput message conditional help = do
             then do 
                 return $ fromJust maybeInt
             else getIntInput message conditional help 
+
 data GameWinner = Tie | GameWinner Player
 
-gameStep :: Board -> Player -> IO GameWinner
-gameStep board player = do
+gameStep :: Board -> Player -> AIMode -> IO GameWinner
+gameStep board player mode = do
   putStrLn $ show player ++ "'s turn"
-  newBoard <- playerMove board player
+  newBoard <- playerMove board player mode
   let isWin = win newBoard
   if isNothing isWin
-       then gameStep newBoard (succ player)
+       then gameStep newBoard (succ player) mode
   else return $ fromJust isWin
  
 main = do
-    result <- gameStep emptyBoard X
+    putStr "Play agaist Computer or Player 2? (C/p): "
+    hFlush stdout
+    picked <- getLine
+    let mode = if picked == "p" then PvP else PvC
+    putStrLn $ "Mode: " ++ (show mode)
+    result <- gameStep emptyBoard X mode
     case result of
       (Tie) -> putStrLn $ "It was a tie!"
       (GameWinner p) -> putStrLn $ "Player " ++ show p ++ " won!!"
