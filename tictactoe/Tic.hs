@@ -4,37 +4,41 @@ import System.IO
 
 
 data Player = X | O
-  deriving (Eq,Show,Enum) -- hack till lucid teachs me how tf types work 
+    deriving (Eq,Show)
 
-next :: Player -> Player
-next O = X
-next X = O
+instance Enum Player where
+    succ x = case x of
+               X -> O
+               O -> X
+    toEnum x = if x `mod` 2 == 0 then X else O 
+    fromEnum x = if x == X then 0 else 1
 
-type Square = Maybe Player
 
+newtype Square = Square (Maybe Player)
+
+instance Show Square where
+    show (Square a) = case a of
+      Just X  -> "X"
+      Just O -> "O"
+      Nothing -> "_"
 
 data Board = Board [Square]
 
+instance Show Board where
+    show a = rowToString a 0 ++ line ++ (rowToString a 1) ++ line ++ (rowToString a 2)
 
 
-toStringS :: Square -> String
-toStringS (Just X) = "X"
-toStringS (Just O) = "O"
-toStringS Nothing = "_"
 
-toStringR :: Board -> Int -> String
-toStringR (Board a) x = " " ++ (toStringS (a !! (3*x + 0))) ++ " | " ++ (toStringS (a !! (3*x+1))) ++ " | " ++ (toStringS (a !! (3*x+2)))
+rowToString :: Board -> Int -> String
+rowToString (Board a) x = " " ++ (show (a !! (3*x + 0))) ++ " | " ++ (show (a !! (3*x+1))) ++ " | " ++ (show (a !! (3*x+2)))
 
 line = "\n------------\n"
 
-toStringB :: Board -> String
-toStringB a = toStringR a 0 ++ line ++ (toStringR a 1) ++ line ++ (toStringR a 2)
-
 getPlayer :: Square -> Player
-getPlayer (Just a) = a
+getPlayer (Square (Just a)) = a
 
 winRow :: Board -> (Int,Int,Int) -> Maybe Player
-winRow (Board a) (x,y,z) = if (a !! x) == (a !! y) && (a !! x) == (a !! z) && ((a !! x) /= Nothing)
+winRow (Board a) (x,y,z) = if (a !! x) == (a !! y) && (a !! x) == (a !! z) && ((a !! x) /= Square Nothing)
                         then Just $ getPlayer (a !! x)
                         else Nothing
 
@@ -55,22 +59,22 @@ win a = do
     else fmap (\x -> GameWinner x) result
  
 isTie :: Board -> Bool
-isTie (Board xs) = all (\x -> x == Nothing) xs
+isTie (Board xs) = all (\x -> x == Square Nothing) xs
 
 play :: Board -> Player -> Int -> Maybe Board
 play (Board a) player index = if index < 0 || index > 8 || (a !! index) /= Nothing then Nothing
                               else Just $ Board $ take index a ++ [Just player] ++ drop (index + 1) a
 
 
-emptyBoard = Board [ Nothing | x <- [0..8]]
+emptyBoard = Board [ Square Nothing | x <- [0..8]]
  
 playerMove :: Board -> Player -> IO Board
 playerMove board player = do
-                            putStrLn $ toStringB board
+                            putStrLn $ show board
                             putStrLn $ "Player " ++ show player ++ " turn"
                             move <- getIntInput "Move (0..8): " (\x -> x `elem` [0..8]) helpHelp
                             let new = play board player move
-                            putStrLn $ maybe "invalid move" toStringB new
+                            putStrLn $ maybe "invalid move" show new
                             if isJust new
                             then return $ fromJust new
                             else do
@@ -105,7 +109,7 @@ gameStep board player = do
   newBoard <- playerMove board player
   let isWin = win newBoard
   if isNothing isWin
-       then gameStep newBoard (next player)
+       then gameStep newBoard (succ player)
   else return $ fromJust isWin
  
 main = do
