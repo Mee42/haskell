@@ -22,9 +22,9 @@ x :: a
 input = Just a
 
 
-Just $ (f . g) x = Just $ f $ fromMaybe (Just (g x))
+Just $ (f . g) x = Just $ f $ fromJust (Just (g x))
 
--- using fromMaybe and Just temporarilly so it makes a bit more sense?
+-- using fromJust and Just temporarilly so it makes a bit more sense?
 -- fromJust input = x, so we don't bother there.
 
 Just $ (f . g) x = Just $ f (g x)
