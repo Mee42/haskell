@@ -111,15 +111,21 @@ search board player = do
   let newBoards = map (\(x,i) -> ((updateElement board x player),i)) options 
   let scores = map(\(boardX,i) -> ((do {
     let win = win boardX;
-    if isJust && fromJust win == Tie;
+    if isJust win && fromJust win == Tie;
         then 0.1; -- tie
-    else if isJust && fromJust win == O;
+    else if isJust win && fromJust win == O;
         then 0.01; -- we win
-    else if isJust && fromJust win == X;
+    else if isJust win && fromJust win == X;
         then 1; -- player wins
     else;
         0.01 + $ search boardX (succ player) }),i)) newBoards
   scores 
+
+score :: Board -> Player -> [Board] -> Maybe GameWinner -> [Fractional,Index]
+score board player newBoards winner = do
+  if isJust winner && fromJust win == Tie;
+
+
    
 -- find all possible moves I can make, then add up,
 --  for all subsequent moves, how many end in losses.
