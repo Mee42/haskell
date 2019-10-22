@@ -1,6 +1,27 @@
+-- Author: Carson Graham
+-- This code is licensed under GNU General Public License v3.0
+-- 
+--
+-- Notes:
+--
+-- There's a saying in haskell - "if it compiles, it'll run perfectly"
+-- because it's immutable/functional with a superb type system,
+-- code is generally written correctly the first time
+-- 
+-- and testing is extreacmly easy, because everything is seperate from everything else
+--
+-- there are no mutating values that are changing incorrectly
+-- there are no function calls with side affects
+-- there are no functions you can't call
+--
+-- all and all, it's very nice. I like it
+--
+-- this code probably had 10x less the runtime-level bugs then an identical program written in Java
+
 import Debug.Trace
 import Data.List
 import Data.Maybe
+import Control.Monad
 
 replace :: Int -> a -> [a] -> [a]
 replace _ _ [] = []
@@ -46,60 +67,105 @@ get (Maze ls) (Point x y) = (ls !! x) !! y
 set :: Maze -> Point -> Square -> Maze
 set (Maze ls) (Point x y) newSquare = Maze $ replace x (replace y newSquare (ls!!x)) ls
 
-solveMazeFrom :: Maze -> Point -> Point -> [Maze]
-solveMazeFrom maze startPoint fromPoint = do
-  if get maze startPoint == End then trace "found end" [maze] else do
-    let possible  = filter (\x -> x /= fromPoint) (surrounding startPoint)
+setTravelled :: Maze -> Point -> Maze
+setTravelled maze point = do
+  if get maze point == Empty then (set maze point Travelled) else maze
+
+solveMazeFrom :: Maze -> Point -> [Maze]
+solveMazeFrom maze startPoint = do
+  if get maze startPoint == End then [maze] else do
+    let possible  = filter (inBounds maze) (surrounding startPoint)
     let possible2 = filter (\newPoint -> (get maze newPoint == Empty) ||(get maze newPoint == End)) possible 
-    if null possible2 then [] else do concat $ map (\newPoint -> solveMazeFrom (set maze startPoint Travelled) newPoint startPoint) possible2
+    if null possible2 then [] else do concat $ map (\newPoint -> solveMazeFrom (setTravelled maze startPoint) newPoint) possible2
       
-findStarting :: Maze -> (Point,Point)
+findStarting :: Maze -> Point
 findStarting (Maze ls) = do
   let row = fst $ head $ filter (\(index,line) -> Start `elem` line ) $ zip [0..] ls
   let col = fromJust $ elemIndex Start (ls !! row)
-  ((Point row col),(Point row (col + 1))) 
+  (Point row col) 
 
 solve :: Maze -> [Maze]
 solve maze = do
-  let (start,next) = findStarting maze
-  solveMazeFrom maze next start
+  let start = findStarting maze
+  solveMazeFrom maze start
 
-maze1 = Maze [
-    replicate 8 Wall,
-    Wall:(replicate 4 Empty) ++ [Wall,Empty,Wall],
-    Wall : Wall : Empty : Wall : Wall : Empty : Empty : [Wall],
-    Wall : Empty : Empty : Empty : Empty : Wall : Empty : Wall : [],
-    Wall : Empty : Wall : Empty : Wall : Wall : Empty : End : [],
-    Start : Empty : Wall : Empty : Wall : Wall : Empty : Wall : [],
-    Wall : Wall : Empty : (take 4 (repeat Empty)) ++ [Wall],
-    replicate 8 Wall]
+-- https://stackoverflow.com/questions/4978578/how-to-split-a-string-in-haskell
+splitWhen     :: (Char -> Bool) -> String -> [String]
+splitWhen p s =  case dropWhile p s of
+                      "" -> []
+                      s' -> w : splitWhen p s''
+                            where (w, s'') = break p s'
 
-
-maze2 = Maze [
-    replicate 8 Wall,
-    Wall : Empty : Empty : Empty : Empty : Wall : Empty : Wall : [],
-    Wall : Wall : Empty : Wall : Wall : Empty : Empty : Wall : [],
-    Wall : (replicate 4 Empty) ++ [Wall,Empty,Wall],
-    Wall : Empty : Wall : Empty : Wall : Wall : Empty : [End],
-    Start : Empty : Wall : Empty : Wall : Wall : Empty : Wall : [],
-    Wall : Wall : (replicate 5 Empty) ++ [Wall],
-    replicate 8 Wall]
-    
+charToSquare :: Char -> Square
+charToSquare 'W' = Wall
+charToSquare '.' = Empty 
+charToSquare 'S' = Start 
+charToSquare 'E' = End
 
 
+readMaze :: String -> IO Maze
+readMaze filename = do
+  lines <- splitWhen (=='\n') <$> readFile filename
+  return $ Maze $ map (\line -> map charToSquare line) lines
 
 
+solveMazeIO :: String -> IO [Maze]
+solveMazeIO filename = solve <$> readMaze filename
 
-
+main_ :: Int -> IO [Maze]
+main_ i = solveMazeIO $ "maze" ++ show i ++ ".txt"
 
 
 
+-- [
+--
+--
+--
+--
+-- here is some sample output and testing of the program
+--
+--
+-- *Main> :l maze.hs
+-- [1 of 1] Compiling Main             ( maze.hs, interpreted )
+-- Ok, one module loaded.
 
+-- *Main> readMaze "maze1.txt"
+-- W W W W W W W W
+-- W         W   W
+-- W W   W W     W
+-- W         W   W
+-- W   W   W W   E
+-- S   W   W W   W
+-- W W           W
+-- W W W W W W W W
 
+-- *Main> solveMazeIO "maze1.txt"
+-- [
+-- W W W W W W W W
+-- W         W   W
+-- W W   W W     W
+-- W * * *   W   W
+-- W * W * W W * E
+-- S * W * W W * W
+-- W W   * * * * W
+-- W W W W W W W W ]
 
+-- *Main> main_ 2
+-- [
+-- W W W S W W W W W W
+-- W     * * W   W   W
+-- W W W W * *       W
+-- W * * * W * W W   W
+-- W * W * * *   W   W
+-- W E W W W W W W W W ]
 
+-- *Main> main_ 3
+-- [
+--    W W
+-- W * * S
+-- E * W W ]
 
-
-
+-- *Main> take 10 $ map (\x -> 2^x) [0..]
+-- [1,2,4,8,16,32,64,128,256,512]
 
 
