@@ -1,6 +1,12 @@
 
 
 
-main = do
-    putStr $ "Name:"
-    putStrLn $ "Hello, " ++ (<-getLine)++ "!"
+
+numbers = [0..]
+
+
+f x = x ^ 2
+sqrts = f <$> numbers
+
+
+
