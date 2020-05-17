@@ -1,0 +1,13 @@
+
+
+
+def repeat_h { 
+  A B b run 
+  {} { 1 a - A b a repeat_h } if run
+}
+
+def repeat {
+  A 1 a - repeat_h
+}
+
+{ 7 out } 3 repeat 

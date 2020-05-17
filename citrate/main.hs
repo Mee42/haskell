@@ -2,7 +2,7 @@ import Prelude hiding (lex)
 
 import Data.Maybe
 import Data.List 
-
+import Control.Monad.State (get, put, StateT, runStateT, liftIO)
 
 data Token =  OpenLambda |
               CloseLambda |
@@ -16,7 +16,7 @@ lex :: String -> [Token]
 lex ('{':xs) = OpenLambda  : lex xs
 lex ('}':xs) = CloseLambda : lex xs
 lex (' ':xs) = lex xs
-
+lex ('\n':xs) = lex xs
 
 
 lex (x:xs) 
@@ -57,7 +57,7 @@ parseLambda (x:xs) = do
 parseLambda [] = ([], [])
 
 
-letters = ['a' .. 'z']
+letters = '_':['a' .. 'z']
 
 indexOf :: (a -> Bool) -> [a] -> Maybe Int
 indexOf f [] = Nothing
@@ -71,7 +71,7 @@ instance Show Value where
     show (LambdaValue xs) = show xs
 
 
-data State = State [Value] [(Char, Value)]
+data State = State [Value] [(Char, Value)] [(String, [Token])] 
 
 
 
@@ -79,33 +79,31 @@ joinToString :: Show a => [a] -> (String, String, String) -> String
 joinToString xs (start, sep, end) = foldr (\a b -> if b == start then start ++ show a else b ++ sep ++ show a) start xs ++end
 
 instance Show State where
-    show (State values map) = do
-        " -- State -- " ++ joinToString (reverse values) ("\n","\n","\n") ++ joinToString betterMap ("","\n","")
+    show (State values map vars) = do
+        " -- State -- " ++ 
+            joinToString (reverse values) ("\n","\n","\n") ++ 
+                joinToString betterMap ("","\n","") ++ variables
             where betterMap = filter (\(_, value) -> keep value) map
                   keep (IntValue 0) = False
                   keep x = True
+                  stringVars = StringLit <$> (\(name, tokens) -> name ++ ": " ++ show tokens) <$> vars 
+                  variables | vars == [] = ""
+                            | otherwise = joinToString stringVars (" -- variables -- \n","\n","")
 
 
-emptyState = State [] [(c, IntValue 0) | c <- ['a'.. 'z']]
+data StringLit = StringLit String
 
-push :: State -> Value -> State 
-push (State xs map) value = State (value:xs) map
-
-pop :: State -> (Value, State)
-pop (State (x:xs) map) = (x, State xs map)
-
-getRegister :: State -> Char -> Value
-getRegister (State _ map) char = second $ head $ filter (\(c,_) -> c==char) map 
-
-setRegister :: State -> Char -> Value -> State
-setRegister (State xs map) char value = State xs $ (char, value) : filter (\(c,_) -> c/=char) map
+instance Show StringLit where
+    show (StringLit s) = s
 
 
-second (_, b) = b
-first (a, _) = a
+emptyState = State [] [(c, IntValue 0) | c <- ['a'.. 'z']] []
 
-run :: String -> IO State
-run x = run' (parse . lex $ x) emptyState
+run_ :: String -> IO State
+run_ x = snd <$> runStateT (run.parse.lex $ x) emptyState 
+
+runf :: String -> IO State
+runf p = readFile p >>= run_
 
 lower = "abcdefghijklmnopqrstuvwxyz"
 upper = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -116,57 +114,111 @@ toLower c = (!!) lower $ fromJust $ elemIndex c upper
 getLambdaValue :: Value -> [Token]
 getLambdaValue (LambdaValue xs) = xs
 
+unwrap :: State -> ([Value], [(Char, Value)], [(String, [Token])])
+unwrap (State xs rx vx) = (xs, rx, vx)
+
+-- runAll :: String -> IO State
+
+push :: Value -> StateT State IO ()
+push value = do
+    (values, regs, vars) <- unwrap <$> get
+    put $ State (value:values) regs vars
+    return ()
+
+pop :: StateT State IO Value
+pop = do
+    ((v:vs), regs, vars) <- unwrap <$> get
+    put $ State vs regs vars
+    return v
+
+getRegister :: Char -> StateT State IO Value
+getRegister c = do
+    (_, regs, _) <- unwrap <$> get
+    return $ snd . head $ filter ((==c).fst) regs
+
+setRegister :: Char -> Value -> StateT State IO ()
+setRegister char value = do
+    (vs, regs,vars) <- unwrap <$> get
+    let newRegs = (char, value) : (filter (\(x,_) -> x /= char) regs)
+    put $ State vs newRegs vars 
+    return ()
 
 
+run :: [Token] -> StateT State IO ()
 
+run (IntToken x:xs) = do
+    push (IntValue x)
+    run xs
 
-
-
-
-
-
-
-run' :: [Token] -> State -> IO State
--- mutates the stack based on all of the tokens
-run' [] state = return state
-run' (IntToken x:xs) state = run' xs $ push state (IntValue x) 
-
-run' (OperatorToken x:xs) state0 | x `elem` "+-/*" = do
-    let (op1, state1) = pop state0
-    let (op2, state2) = pop state1
-  
+run (OperatorToken x:xs) = do
     let (_, operator) = head $ filter (\(a,b) -> a == x) $ zip "+-/*" [(+),(-), (div),(*)]
+    op1 <- getIntValue <$> pop
+    op2 <- getIntValue <$> pop
+    push . IntValue $ operator op1 op2
+    run xs
 
-    run' xs $ push state2 $ IntValue (getIntValue op2 `operator` getIntValue op1)
-      | otherwise = error $ "idk the token " ++ show x
+run (IdentifierToken [x]:xs)
+    | x `elem` lower = do
+        getRegister x >>= push
+        run xs
+    | x `elem` upper = do
+        pop >>= setRegister (toLower x)
+        run xs
 
-run' (IdentifierToken [x]:xs) state0 
-  | x `elem` "abcdefghijklmnopqrstuvwxyz" =  run' xs $ push state0 $ getRegister state0 x  -- push a
-  | x `elem` "ABCDEFGHIJKLMNOPQRSTUVWXYZ" =  do -- pop a
-      let (value, state1) = pop state0
-      let state2 = setRegister state1 (toLower x) value
-      run' xs state2
+run (IdentifierToken "if":xs) = do
+    op1 <- pop
+    op2 <- pop
+    aReg <- getIntValue <$> getRegister 'a'
+    if aReg == 0 then push op2 else push op1
+    run xs
+
+run (IdentifierToken "run":xs) = do
+    tokens <- getLambdaValue <$> pop
+    run tokens
+    run xs
+
+run (IdentifierToken "out":xs) = do
+    i <- getIntValue <$> pop
+    liftIO $ print i
+    run xs
+
+run (IdentifierToken "in":xs) = do
+    liftIO $ putStr "> "
+    i <- liftIO (readLn :: IO Int)
+    push $ IntValue i
+    run xs
+
+run (LambdaToken tokens:xs) = do
+    push $ LambdaValue tokens
+    run xs
 
 
-run' (IdentifierToken "if":xs) state0 = do
-                          let (op1, state1) = pop state0
-                          let (op2, state2) = pop state1
-                          run' xs $ if getIntValue (getRegister state2 'a') == 0 then push state2 op2 else push state2 op1 
+run (IdentifierToken "def":IdentifierToken id:LambdaToken tokens:xs) = do
+    (vx, regs, vars) <- unwrap <$> get
+    let newVars = (id,tokens):filter ((/=id).fst) vars
+    put $ State vx regs newVars
+    run xs
 
-run' (IdentifierToken "run":xs) state0 = do
-                          let (value, state1) = pop state0
-                          run' (getLambdaValue value) state1 >>= run' xs
-run' (IdentifierToken "out":xs) state0 = do
-                          let (value, state1) = pop state0
-                          print value >> (run' xs state1)
 
-run' (IdentifierToken "in":xs) state0 = do
-                          putStr "> "
-                          i <- readLn 
-                          run' xs $ push state0 (IntValue i)
+run (IdentifierToken id:xs) = do
+    variables <- trd <$> unwrap <$> get
+    let varsAccessable = filter ((==id).fst) variables
+    let tokens=if varsAccessable /= [] 
+                  then snd . head $ varsAccessable 
+                  else error $ "can't find variable " ++ show id
+    run tokens
+    run xs 
 
-run' (LambdaToken tokens:xs) state = run' xs $ push state $ LambdaValue tokens 
 
- 
+run [] = return ()
+
+
+
+
+trd (_, _, x) = x
+
+
+
+
 
 
