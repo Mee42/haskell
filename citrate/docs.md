@@ -93,4 +93,20 @@ For example:
 
 ### files
 
-so in the past, we've only t ac
+so in the past, we've only have an input of a line of tokens.
+
+Citrate also supports the file format, `*.ct`. In each file format is the several lines.
+Each line follows this syntax
+
+DEF $main = $tokens~
+
+DEF main = 7 out
+
+
+
+
+
+
+
+
+
