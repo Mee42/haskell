@@ -124,4 +124,37 @@ instance Num Nat where
 
 
 
+data Int = Neg Nat | Pos Nat
+
+instance Show Int where
+    show (Pos x) = show x
+    show (Neg x) = Cons '-' Nil ++ show (x + n1)
+
+neg2 = Neg (S Z)
+neg1 = Neg Z
+pos0 = Pos Z
+pos1 = Pos (S Z)
+pos2 = Pos (S (S Z))
+
+
+instance Num Int where
+    (+) (Pos a) (Pos b) = Pos (a + b)
+    (+) (Pos Z) x = x
+    (+) x (Pos Z) = x
+    (+) (Pos a) (Neg b) = Neg b + Pos a
+    (+) (Neg Z) (Pos (S x)) = Pos x
+    (+) (Neg Z) (Neg x) = Neg (S x)
+    (+) (Neg (S a)) (Pos (S b)) = Neg a + Pos b
+    (+) (Neg a) (Neg b) = Neg (a + b + S Z)
+  
+    (-) a (Pos Z) = a
+    (-) a (Neg b) = a + Pos (S b)
+    (-) a (Pos (S b)) = a + Neg b
+     
+    --(*) (Pos Z) _ = Pos Z
+    --(*) _ (Pos Z) = Pos Z
+    --(*) (Neg 
+
+
+
 
